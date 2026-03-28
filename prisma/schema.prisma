@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CHAIRMAN
+  MINISTER
+  MP
+  PUBLIC
+}
+
+enum VoteChoice {
+  YES
+  NO
+  ABSTAIN
+}
+
+enum ProposalStatus {
+  OPEN
+  CLOSED
+  PASSED
+  REJECTED
+}
+
+enum ComplaintStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum RumorStatus {
+  REPORTED
+  UNDER_REVIEW
+  VERIFIED_TRUE
+  VERIFIED_FALSE
+  PUBLISHED
+}
+
+enum FundType {
+  DONATION
+  EXPENSE
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(PUBLIC)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  constituency Constituency?
+  proposals    Proposal[]
+  votes        Vote[]
+  meetings     Meeting[]
+  funds        Fund[]
+  complaints   Complaint[]
+  rumors       Rumor[]
+  news         News[]
+  comments     Comment[]
+  reactions    Reaction[]
+  activityLogs ActivityLog[]
+  events       Event[]
+  posts        Post[]
+  postComments PostComment[]
+  postLikes    PostLike[]
+
+  @@map("users")
+}
+
+model Constituency {
+  id       String  @id @default(cuid())
+  number   Int     @unique
+  name     String
+  region   String
+  province String
+  mpId     String? @unique
+  mp       User?   @relation(fields: [mpId], references: [id])
+
+  @@map("constituencies")
+}
+
+model Proposal {
+  id          String         @id @default(cuid())
+  title       String
+  description String
+  status      ProposalStatus @default(OPEN)
+  createdById String
+  createdBy   User           @relation(fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now())
+  closedAt    DateTime?
+  votes       Vote[]
+
+  @@map("proposals")
+}
+
+model Vote {
+  id         String     @id @default(cuid())
+  choice     VoteChoice
+  proposalId String
+  ministerId String
+  createdAt  DateTime   @default(now())
+
+  proposal Proposal @relation(fields: [proposalId], references: [id])
+  minister User     @relation(fields: [ministerId], references: [id])
+
+  @@unique([proposalId, ministerId])
+  @@map("votes")
+}
+
+model Meeting {
+  id          String        @id @default(cuid())
+  title       String
+  agenda      String
+  scheduledAt DateTime
+  location    String?
+  status      MeetingStatus @default(SCHEDULED)
+  mpId        String
+  mp          User          @relation(fields: [mpId], references: [id])
+  createdAt   DateTime      @default(now())
+
+  @@map("meetings")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  location    String
+  startDate   DateTime
+  endDate     DateTime
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  participants EventParticipant[]
+
+  @@map("events")
+}
+
+model EventParticipant {
+  id      String  @id @default(cuid())
+  eventId String
+  userId  String?
+  name    String
+  email   String
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  @@unique([eventId, email])
+  @@map("event_participants")
+}
+
+model Fund {
+  id           String   @id @default(cuid())
+  type         FundType
+  amount       Float
+  description  String
+  category     String
+  recordedById String
+  recordedBy   User     @relation(fields: [recordedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@map("funds")
+}
+
+model Complaint {
+  id            String          @id @default(cuid())
+  subject       String
+  description   String
+  status        ComplaintStatus @default(PENDING)
+  submittedById String
+  submittedBy   User            @relation(fields: [submittedById], references: [id])
+  adminNote     String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@map("complaints")
+}
+
+model Rumor {
+  id            String      @id @default(cuid())
+  title         String
+  description   String
+  status        RumorStatus @default(REPORTED)
+  reportedById  String
+  reportedBy    User        @relation(fields: [reportedById], references: [id])
+  clarification String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("rumors")
+}
+
+model News {
+  id            String   @id @default(cuid())
+  title         String
+  content       String
+  imageUrl      String?
+  publishedById String
+  publishedBy   User     @relation(fields: [publishedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  comments  Comment[]
+  reactions Reaction[]
+
+  @@map("news")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  newsId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  news News @relation(fields: [newsId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("comments")
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  type      String
+  newsId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  news News @relation(fields: [newsId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([newsId, userId])
+  @@map("reactions")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String
+  entityId  String?
+  meta      String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("activity_logs")
+}
+
+model Post {
+  id          String   @id @default(cuid())
+  content     String
+  imageUrl    String?  @db.Text
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  comments PostComment[]
+  likes    PostLike[]
+
+  @@map("posts")
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  content   String
+  postId    String
+  authorId  String
+  createdAt DateTime @default(now())
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@map("post_comments")
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("post_likes")
+}
