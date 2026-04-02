@@ -9,6 +9,7 @@ datasource db {
 
 enum Role {
   ADMIN
+  PARTY_ADMIN
   CHAIRMAN
   MINISTER
   MP
@@ -60,6 +61,8 @@ model User {
   name         String
   passwordHash String
   role         Role     @default(PUBLIC)
+  partyName    String?
+  mpImageUrl   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -82,14 +85,57 @@ model User {
   @@map("users")
 }
 
+model Party {
+  id                   String   @id @default(cuid())
+  name                 String   @unique
+  leader               String
+  ideology             String
+  parliamentaryPosition String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  alliances AllianceParty[]
+
+  @@map("parties")
+}
+
+model Alliance {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  founded   String
+  createdAt DateTime @default(now())
+
+  parties AllianceParty[]
+
+  @@map("alliances")
+}
+
+model AllianceParty {
+  partyId    String
+  allianceId String
+
+  party    Party    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  alliance Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
+
+  @@id([partyId, allianceId])
+  @@map("alliance_parties")
+}
+
 model Constituency {
-  id       String  @id @default(cuid())
-  number   Int     @unique
-  name     String
-  region   String
-  province String
-  mpId     String? @unique
-  mp       User?   @relation(fields: [mpId], references: [id])
+  id               String  @id @default(cuid())
+  number           Int     @unique
+  name             String
+  nameBn           String?
+  region           String
+  province         String
+  constituencyKey  String? @unique
+  mpId             String? @unique
+  mp               User?   @relation(fields: [mpId], references: [id])
+
+  funds      Fund[]
+  complaints Complaint[]
+  rumors     Rumor[]
+  events     Event[]
 
   @@map("constituencies")
 }
@@ -137,15 +183,17 @@ model Meeting {
 }
 
 model Event {
-  id          String   @id @default(cuid())
-  title       String
-  description String
-  location    String
-  startDate   DateTime
-  endDate     DateTime
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  title          String
+  description    String
+  location       String
+  startDate      DateTime
+  endDate        DateTime
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  constituencyId String?
+  constituency   Constituency? @relation(fields: [constituencyId], references: [id])
 
   participants EventParticipant[]
 
@@ -166,42 +214,49 @@ model EventParticipant {
 }
 
 model Fund {
-  id           String   @id @default(cuid())
-  type         FundType
-  amount       Float
-  description  String
-  category     String
-  recordedById String
-  recordedBy   User     @relation(fields: [recordedById], references: [id])
-  createdAt    DateTime @default(now())
+  id             String   @id @default(cuid())
+  type           FundType
+  amount         Float
+  description    String
+  category       String
+  partyName      String?
+  constituencyId String?
+  recordedById   String
+  recordedBy     User     @relation(fields: [recordedById], references: [id])
+  constituency   Constituency? @relation(fields: [constituencyId], references: [id])
+  createdAt      DateTime @default(now())
 
   @@map("funds")
 }
 
 model Complaint {
-  id            String          @id @default(cuid())
-  subject       String
-  description   String
-  status        ComplaintStatus @default(PENDING)
-  submittedById String
-  submittedBy   User            @relation(fields: [submittedById], references: [id])
-  adminNote     String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  subject        String
+  description    String
+  status         ComplaintStatus @default(PENDING)
+  submittedById  String
+  submittedBy    User            @relation(fields: [submittedById], references: [id])
+  adminNote      String?
+  constituencyId String?
+  constituency   Constituency?   @relation(fields: [constituencyId], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@map("complaints")
 }
 
 model Rumor {
-  id            String      @id @default(cuid())
-  title         String
-  description   String
-  status        RumorStatus @default(REPORTED)
-  reportedById  String
-  reportedBy    User        @relation(fields: [reportedById], references: [id])
-  clarification String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id             String      @id @default(cuid())
+  title          String
+  description    String
+  status         RumorStatus @default(REPORTED)
+  reportedById   String
+  reportedBy     User        @relation(fields: [reportedById], references: [id])
+  clarification  String?
+  constituencyId String?
+  constituency   Constituency? @relation(fields: [constituencyId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@map("rumors")
 }
@@ -262,13 +317,13 @@ model ActivityLog {
 }
 
 model Post {
-  id          String   @id @default(cuid())
-  content     String
-  imageUrl    String?  @db.Text
-  authorId    String
-  author      User     @relation(fields: [authorId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  content   String
+  imageUrl  String?  @db.Text
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   comments PostComment[]
   likes    PostLike[]
@@ -281,10 +336,13 @@ model PostComment {
   content   String
   postId    String
   authorId  String
+  parentId  String?
   createdAt DateTime @default(now())
 
-  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id])
+  post    Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User          @relation(fields: [authorId], references: [id])
+  parent  PostComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies PostComment[] @relation("CommentReplies")
 
   @@map("post_comments")
 }

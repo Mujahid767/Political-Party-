@@ -37,10 +37,22 @@ export async function deletePost(id: string, userId: string, role: string) {
   await prisma.post.delete({ where: { id } });
 }
 
+const COMMENT_AUTHOR_SELECT = { id: true, name: true, role: true };
+
 export async function getPostComments(postId: string) {
   return prisma.postComment.findMany({
-    where: { postId },
-    select: { id: true, content: true, createdAt: true, author: { select: { id: true, name: true, role: true } } },
+    where: { postId, parentId: null }, // only top-level
+    select: {
+      id: true, content: true, createdAt: true,
+      author: { select: COMMENT_AUTHOR_SELECT },
+      replies: {
+        select: {
+          id: true, content: true, createdAt: true,
+          author: { select: COMMENT_AUTHOR_SELECT },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
     orderBy: { createdAt: 'asc' },
   });
 }
@@ -49,7 +61,23 @@ export async function addComment(postId: string, authorId: string, content: stri
   await prisma.post.findUniqueOrThrow({ where: { id: postId } });
   return prisma.postComment.create({
     data: { postId, authorId, content },
-    select: { id: true, content: true, createdAt: true, author: { select: { id: true, name: true, role: true } } },
+    select: {
+      id: true, content: true, createdAt: true,
+      author: { select: COMMENT_AUTHOR_SELECT },
+      replies: true,
+    },
+  });
+}
+
+export async function addReply(postId: string, parentCommentId: string, authorId: string, content: string) {
+  const parent = await prisma.postComment.findUniqueOrThrow({ where: { id: parentCommentId } });
+  if (parent.postId !== postId) throw new Error('Comment does not belong to this post');
+  return prisma.postComment.create({
+    data: { postId, authorId, content, parentId: parentCommentId },
+    select: {
+      id: true, content: true, createdAt: true, parentId: true,
+      author: { select: COMMENT_AUTHOR_SELECT },
+    },
   });
 }
 

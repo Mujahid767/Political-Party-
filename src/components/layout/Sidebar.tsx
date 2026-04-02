@@ -9,6 +9,7 @@ const navByRole: Record<string, NavSection[]> = {
   ADMIN: [
     { section: 'Overview', items: [{ href:'/dashboard/admin', label:'Dashboard', icon:'📊' }] },
     { section: 'Management', items: [
+      { href:'/dashboard/admin/parties', label:'Parties & Alliances', icon:'🏛️' },
       { href:'/dashboard/constituencies', label:'Constituencies', icon:'🗺️' },
       { href:'/dashboard/proposals', label:'Proposals & Voting', icon:'🗳️' },
       { href:'/dashboard/meetings', label:'Meetings', icon:'📅' },
@@ -21,6 +22,14 @@ const navByRole: Record<string, NavSection[]> = {
       { href:'/dashboard/news', label:'Official Newsfeed', icon:'📰' },
       { href:'/dashboard/community', label:'Community Feed', icon:'🌐' },
       { href:'/dashboard/users', label:'User Management', icon:'👥' },
+    ]},
+  ],
+  PARTY_ADMIN: [
+    { section: 'Overview', items: [{ href:'/dashboard/party-admin', label:'Party Dashboard', icon:'📊' }] },
+    { section: 'Operations', items: [
+      { href:'/dashboard/events', label:'Events', icon:'🎪' },
+      { href:'/dashboard/news', label:'Official Newsfeed', icon:'📰' },
+      { href:'/dashboard/community', label:'Community Feed', icon:'🌐' },
     ]},
   ],
   CHAIRMAN: [

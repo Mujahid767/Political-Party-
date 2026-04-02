@@ -3,14 +3,15 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 
 /* ─── Types ─────────────────────────────────────────────────── */
-interface Author { id: string; name: string; role: string; }
+interface Author   { id: string; name: string; role: string; }
+interface Reply    { id: string; content: string; author: Author; createdAt: string; }
+interface Comment  { id: string; content: string; author: Author; createdAt: string; replies: Reply[]; }
 interface Post {
   id: string; content: string; imageUrl: string | null;
   author: Author; createdAt: string;
   _count: { comments: number; likes: number };
   likedByMe: boolean;
 }
-interface Comment { id: string; content: string; author: Author; createdAt: string; }
 interface UserInfo { id: string; name: string; role: string; email: string; }
 
 /* ─── Role badge colours ─────────────────────────────────────── */
@@ -39,23 +40,182 @@ const ROLE_GRADIENT: Record<string, string> = {
   MINISTER: '#8b5cf6,#7c3aed', MP: '#3b82f6,#2563eb', PUBLIC: '#64748b,#475569',
 };
 
+/* ─── Avatar ─────────────────────────────────────────────────── */
+function Avatar({ name, role, size = 30 }: { name: string; role: string; size?: number }) {
+  const grad = ROLE_GRADIENT[role] ?? ROLE_GRADIENT.PUBLIC;
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      background: `linear-gradient(135deg,${grad})`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontWeight: 700, fontSize: size * 0.32, color: '#fff', flexShrink: 0,
+    }}>
+      {initials(name)}
+    </div>
+  );
+}
+
+/* ─── Single Reply item ──────────────────────────────────────── */
+function ReplyItem({ reply }: { reply: Reply }) {
+  return (
+    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+      <Avatar name={reply.author.name} role={reply.author.role} size={26} />
+      <div style={{ flex: 1 }}>
+        <div style={{
+          background: 'rgba(255,255,255,0.05)', borderRadius: '0 10px 10px 10px',
+          padding: '0.4rem 0.65rem', border: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <div style={{ fontWeight: 600, fontSize: '0.75rem', marginBottom: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            {reply.author.name}
+            <span className={`badge ${ROLE_COLOR[reply.author.role] ?? 'badge-gray'}`} style={{ fontSize: '0.5rem' }}>{reply.author.role}</span>
+          </div>
+          <div style={{ fontSize: '0.82rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {reply.content}
+          </div>
+        </div>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.15rem', paddingLeft: '0.4rem' }}>
+          {timeAgo(reply.createdAt)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Single Comment Item ────────────────────────────────────── */
+function CommentItem({
+  comment, postId, user, onReplySuccess,
+}: {
+  comment: Comment; postId: string; user: UserInfo;
+  onReplySuccess: (commentId: string, reply: Reply) => void;
+}) {
+  const [showReplyBox, setShowReplyBox] = useState(false);
+  const [replyText, setReplyText]       = useState(`@${comment.author.name} `);
+  const [posting, setPosting]           = useState(false);
+  const [showReplies, setShowReplies]   = useState(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openReply() {
+    setReplyText(`@${comment.author.name} `);
+    setShowReplyBox(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
+  async function submitReply(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = replyText.trim();
+    if (!trimmed) return;
+    setPosting(true);
+    const res = await fetch(`/api/posts/${postId}/comments/${comment.id}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: trimmed }),
+    });
+    const d = await res.json();
+    if (d.success) {
+      onReplySuccess(comment.id, d.data);
+      setReplyText(`@${comment.author.name} `);
+      setShowReplyBox(false);
+    }
+    setPosting(false);
+  }
+
+  const replyCount = comment.replies?.length ?? 0;
+
+  return (
+    <div style={{ display: 'flex', gap: '0.6rem' }}>
+      <Avatar name={comment.author.name} role={comment.author.role} size={30} />
+      <div style={{ flex: 1 }}>
+        {/* Comment bubble */}
+        <div style={{ background: 'var(--navy-light)', borderRadius: '0 12px 12px 12px', padding: '0.5rem 0.75rem' }}>
+          <div style={{ fontWeight: 600, fontSize: '0.78rem', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            {comment.author.name}
+            <span className={`badge ${ROLE_COLOR[comment.author.role] ?? 'badge-gray'}`} style={{ fontSize: '0.55rem' }}>{comment.author.role}</span>
+          </div>
+          <div style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {comment.content}
+          </div>
+        </div>
+
+        {/* Meta + Reply action */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem', paddingLeft: '0.4rem' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{timeAgo(comment.createdAt)}</span>
+          <button
+            onClick={openReply}
+            style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '0.25rem', transition: 'opacity 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+          >
+            ↩ Reply
+          </button>
+          {replyCount > 0 && (
+            <button
+              onClick={() => setShowReplies(s => !s)}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.7rem', cursor: 'pointer', padding: 0 }}
+            >
+              {showReplies
+                ? `▾ Hide ${replyCount} repl${replyCount > 1 ? 'ies' : 'y'}`
+                : `▸ Show ${replyCount} repl${replyCount > 1 ? 'ies' : 'y'}`}
+            </button>
+          )}
+        </div>
+
+        {/* Nested replies */}
+        {showReplies && replyCount > 0 && (
+          <div style={{ marginTop: '0.4rem', paddingLeft: '0.75rem', borderLeft: '2px solid rgba(96,165,250,0.25)' }}>
+            {comment.replies.map(r => <ReplyItem key={r.id} reply={r} />)}
+          </div>
+        )}
+
+        {/* Reply input box */}
+        {showReplyBox && (
+          <form onSubmit={submitReply} style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', paddingLeft: '0.5rem', alignItems: 'center' }}>
+            <Avatar name={user.name} role={user.role} size={24} />
+            <input
+              ref={inputRef}
+              value={replyText}
+              onChange={e => setReplyText(e.target.value)}
+              placeholder={`Reply to @${comment.author.name}…`}
+              style={{ flex: 1, borderRadius: 20, padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+            />
+            <button
+              type="submit"
+              disabled={posting || !replyText.trim()}
+              className="btn btn-primary btn-sm"
+              style={{ borderRadius: 20, fontSize: '0.75rem', padding: '0.3rem 0.75rem', flexShrink: 0 }}
+            >
+              {posting ? '…' : 'Send'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReplyBox(false)}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.75rem', padding: '0.3rem 0.4rem', flexShrink: 0 }}
+            >
+              Cancel
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── PostCard ───────────────────────────────────────────────── */
 function PostCard({ post, user, onLike, onDelete }: {
   post: Post; user: UserInfo;
   onLike: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [commentText, setCommentText] = useState('');
-  const [loadingComments, setLoadingComments] = useState(false);
-  const [postingComment, setPostingComment] = useState(false);
-  const [likes, setLikes] = useState(post._count.likes);
-  const [liked, setLiked] = useState(post.likedByMe);
+  const [showComments, setShowComments]         = useState(false);
+  const [comments, setComments]                 = useState<Comment[]>([]);
+  const [commentText, setCommentText]           = useState('');
+  const [loadingComments, setLoadingComments]   = useState(false);
+  const [postingComment, setPostingComment]     = useState(false);
+  const [likes, setLikes]   = useState(post._count.likes);
+  const [liked, setLiked]   = useState(post.likedByMe);
   const [imgExpanded, setImgExpanded] = useState(false);
 
   const canDelete = user.id === post.author.id || user.role === 'ADMIN' || user.role === 'CHAIRMAN';
-  const gradient = ROLE_GRADIENT[post.author.role] ?? ROLE_GRADIENT.PUBLIC;
+  const gradient  = ROLE_GRADIENT[post.author.role] ?? ROLE_GRADIENT.PUBLIC;
 
   async function loadComments() {
     if (loadingComments) return;
@@ -72,7 +232,7 @@ function PostCard({ post, user, onLike, onDelete }: {
 
   async function handleLike() {
     setLiked(l => !l);
-  setLikes((l: number) => liked ? l - 1 : l + 1);
+    setLikes((l: number) => liked ? l - 1 : l + 1);
     onLike(post.id);
   }
 
@@ -85,15 +245,29 @@ function PostCard({ post, user, onLike, onDelete }: {
       body: JSON.stringify({ content: commentText }),
     });
     const d = await res.json();
-    if (d.success) { setComments(c => [...c, d.data]); setCommentText(''); }
+    if (d.success) {
+      setComments(c => [...c, { ...d.data, replies: [] }]);
+      setCommentText('');
+    }
     setPostingComment(false);
   }
 
-  return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', transition: 'box-shadow 0.2s' }}
-      onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.25)')}
-      onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}>
+  function handleReplySuccess(commentId: string, reply: Reply) {
+    setComments(prev => prev.map(c =>
+      c.id === commentId ? { ...c, replies: [...(c.replies ?? []), reply] } : c
+    ));
+  }
 
+  // total count — top-level comments + all replies
+  const totalCount   = comments.reduce((acc, c) => acc + 1 + (c.replies?.length ?? 0), 0);
+  const displayCount = totalCount > 0 ? totalCount : post._count.comments;
+
+  return (
+    <div
+      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', transition: 'box-shadow 0.2s' }}
+      onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.25)')}
+      onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+    >
       {/* Header */}
       <div style={{ padding: '1rem 1.25rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <div style={{ width: 42, height: 42, borderRadius: '50%', background: `linear-gradient(135deg,${gradient})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.9rem', color: '#fff', flexShrink: 0 }}>
@@ -127,44 +301,44 @@ function PostCard({ post, user, onLike, onDelete }: {
         </div>
       )}
 
-      {/* Actions */}
+      {/* Action bar */}
       <div style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderTop: '1px solid var(--border)' }}>
         <button onClick={handleLike} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: liked ? 'rgba(245,158,11,0.12)' : 'none', border: '1px solid ' + (liked ? 'rgba(245,158,11,0.3)' : 'var(--border)'), borderRadius: 8, padding: '0.4rem 0.75rem', cursor: 'pointer', color: liked ? 'var(--gold)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}>
           👍 {likes}
         </button>
         <button onClick={toggleComments} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: showComments ? 'rgba(59,130,246,0.1)' : 'none', border: '1px solid ' + (showComments ? 'rgba(59,130,246,0.3)' : 'var(--border)'), borderRadius: 8, padding: '0.4rem 0.75rem', cursor: 'pointer', color: showComments ? '#60a5fa' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}>
-          💬 {post._count.comments + (comments.length > post._count.comments ? comments.length - post._count.comments : 0)}
+          💬 {displayCount}
         </button>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{new Date(post.createdAt).toLocaleDateString()}</span>
       </div>
 
-      {/* Comments section */}
+      {/* Comments + Replies section */}
       {showComments && (
-        <div style={{ borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.15)', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div style={{ borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.15)', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           {loadingComments ? (
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center' }}>Loading…</p>
           ) : comments.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center' }}>No comments yet. Be first!</p>
           ) : comments.map(c => (
-            <div key={c.id} style={{ display: 'flex', gap: '0.6rem' }}>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: `linear-gradient(135deg,${ROLE_GRADIENT[c.author.role] ?? ROLE_GRADIENT.PUBLIC})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                {initials(c.author.name)}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ background: 'var(--navy-light)', borderRadius: '0 12px 12px 12px', padding: '0.5rem 0.75rem' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.78rem', marginBottom: '0.2rem' }}>{c.author.name} <span className={`badge ${ROLE_COLOR[c.author.role] ?? 'badge-gray'}`} style={{ fontSize: '0.55rem' }}>{c.author.role}</span></div>
-                  <div style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{c.content}</div>
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem', paddingLeft: '0.5rem' }}>{timeAgo(c.createdAt)}</div>
-              </div>
-            </div>
+            <CommentItem
+              key={c.id}
+              comment={c}
+              postId={post.id}
+              user={user}
+              onReplySuccess={handleReplySuccess}
+            />
           ))}
-          <form onSubmit={submitComment} style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
-            <div style={{ width: 30, height: 30, borderRadius: '50%', background: `linear-gradient(135deg,${ROLE_GRADIENT[user.role] ?? ROLE_GRADIENT.PUBLIC})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0, marginTop: 4 }}>
-              {initials(user.name)}
-            </div>
-            <input value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="Write a comment…" style={{ flex: 1, borderRadius: 20, padding: '0.45rem 0.875rem', fontSize: '0.85rem' }} />
+
+          {/* New top-level comment */}
+          <form onSubmit={submitComment} style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem', alignItems: 'center' }}>
+            <Avatar name={user.name} role={user.role} size={30} />
+            <input
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              placeholder="Write a comment…"
+              style={{ flex: 1, borderRadius: 20, padding: '0.45rem 0.875rem', fontSize: '0.85rem' }}
+            />
             <button type="submit" disabled={postingComment || !commentText.trim()} className="btn btn-primary btn-sm" style={{ borderRadius: 20, flexShrink: 0 }}>Post</button>
           </form>
         </div>
@@ -184,11 +358,11 @@ function PostCard({ post, user, onLike, onDelete }: {
 
 /* ─── Create Post Form ───────────────────────────────────────── */
 function CreatePostForm({ user, onCreated }: { user: UserInfo; onCreated: (post: Post) => void }) {
-  const [content, setContent] = useState('');
-  const [imageData, setImageData] = useState<string | null>(null);
+  const [content, setContent]         = useState('');
+  const [imageData, setImageData]     = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const gradient = ROLE_GRADIENT[user.role] ?? ROLE_GRADIENT.PUBLIC;
 
@@ -205,7 +379,10 @@ function CreatePostForm({ user, onCreated }: { user: UserInfo; onCreated: (post:
     reader.readAsDataURL(file);
   }
 
-  function removeImage() { setImageData(null); setImagePreview(null); if (fileRef.current) fileRef.current.value = ''; }
+  function removeImage() {
+    setImageData(null); setImagePreview(null);
+    if (fileRef.current) fileRef.current.value = '';
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -265,10 +442,10 @@ function CreatePostForm({ user, onCreated }: { user: UserInfo; onCreated: (post:
 
 /* ─── Main Page ─────────────────────────────────────────────── */
 export default function CommunityFeedPage() {
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
+  const [user, setUser]     = useState<UserInfo | null>(null);
+  const [posts, setPosts]   = useState<Post[]>([]);
+  const [page, setPage]     = useState(1);
+  const [pages, setPages]   = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
