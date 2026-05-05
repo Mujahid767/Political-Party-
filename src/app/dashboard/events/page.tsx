@@ -4,7 +4,10 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import Modal from '@/components/ui/Modal';
 
 interface Event { id:string; title:string; description:string; location:string; startDate:string; endDate:string; createdBy:{name:string}; _count:{participants:number}; }
-interface UserInfo { name:string; role:string; email:string; }
+interface UserInfo { id:string; name:string; role:string; email:string; }
+
+const EVENT_ROLES = ['Volunteer', 'Guest', 'Observer', 'Speaker', 'Organizer', 'Other'];
+const NON_PUBLIC = ['ADMIN','PARTY_ADMIN','CHAIRMAN','MINISTER','MP'];
 
 export default function EventsPage() {
   const [user, setUser] = useState<UserInfo|null>(null);
@@ -12,12 +15,20 @@ export default function EventsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showRegister, setShowRegister] = useState<string|null>(null);
   const [form, setForm] = useState({ title:'', description:'', location:'', startDate:'', endDate:'' });
-  const [reg, setReg] = useState({ name:'', email:'' });
+  const [reg, setReg] = useState({ name:'', email:'', role:'Guest' });
   const [msg, setMsg] = useState('');
 
-  useEffect(()=>{ fetch('/api/auth/me').then(r=>r.json()).then(d=>setUser(d.data)); },[]);
+  useEffect(()=>{
+    fetch('/api/auth/me').then(r=>r.json()).then(d=>{ setUser(d.data); });
+  },[]);
   const load = ()=>fetch('/api/events').then(r=>r.json()).then(d=>setEvents(d.data||[]));
   useEffect(()=>{ load(); },[]);
+
+  // Auto-fill name/email when opening registration modal
+  function openRegister(eventId: string) {
+    if (user) setReg({ name: user.name, email: user.email, role: 'Guest' });
+    setShowRegister(eventId);
+  }
 
   async function create(e:React.FormEvent) {
     e.preventDefault();
@@ -31,11 +42,11 @@ export default function EventsPage() {
     if (!showRegister) return;
     const res = await fetch(`/api/events/${showRegister}/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reg)});
     const d = await res.json();
-    if (d.success) { setShowRegister(null);setReg({name:'',email:''});load(); } else setMsg(d.error);
+    if (d.success) { setShowRegister(null);setReg({name:'',email:'',role:'Guest'});load(); } else setMsg(d.error);
   }
 
   if (!user) return null;
-  const canCreate = ['ADMIN','CHAIRMAN'].includes(user.role);
+  const canCreate = NON_PUBLIC.includes(user.role);
 
   return (
     <DashboardLayout title="Events" user={user}>
@@ -58,10 +69,11 @@ export default function EventsPage() {
               <span>📅 {new Date(ev.startDate).toLocaleString()} — {new Date(ev.endDate).toLocaleString()}</span>
               <span>👤 by {ev.createdBy.name}</span>
             </div>
-            <button className="btn btn-primary btn-sm" onClick={()=>setShowRegister(ev.id)}>Register Participant</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>openRegister(ev.id)}>Register / Attend</button>
           </div>
         ))}
       </div>
+
       {showCreate&&<Modal title="Create Event" onClose={()=>setShowCreate(false)}>
         <form onSubmit={create}>
           <div className="form-group"><label>Title</label><input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} required/></div>
@@ -75,10 +87,17 @@ export default function EventsPage() {
           </div>
         </form>
       </Modal>}
-      {showRegister&&<Modal title="Register Participant" onClose={()=>setShowRegister(null)}>
+
+      {showRegister&&<Modal title="Register for Event" onClose={()=>setShowRegister(null)}>
         <form onSubmit={register}>
           <div className="form-group"><label>Full Name</label><input value={reg.name} onChange={e=>setReg(r=>({...r,name:e.target.value}))} required/></div>
           <div className="form-group"><label>Email</label><input type="email" value={reg.email} onChange={e=>setReg(r=>({...r,email:e.target.value}))} required/></div>
+          <div className="form-group">
+            <label>Your Role at This Event</label>
+            <select value={reg.role} onChange={e=>setReg(r=>({...r,role:e.target.value}))} style={{width:'100%',borderRadius:8,padding:'0.6rem 0.75rem'}}>
+              {EVENT_ROLES.map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
           {msg&&<p style={{color:'#f87171',fontSize:'0.8rem',marginBottom:'0.75rem'}}>{msg}</p>}
           <div style={{display:'flex',gap:'0.5rem',justifyContent:'flex-end'}}>
             <button type="button" className="btn btn-secondary" onClick={()=>setShowRegister(null)}>Cancel</button>
@@ -89,3 +108,4 @@ export default function EventsPage() {
     </DashboardLayout>
   );
 }
+

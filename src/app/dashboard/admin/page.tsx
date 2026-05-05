@@ -9,7 +9,7 @@ export default async function AdminDashboard() {
   const user = await getUser();
   if (!user || (user.role!=='ADMIN'&&user.role!=='CHAIRMAN')) redirect('/login');
 
-  const [users, constTotal, constAssigned, openProposals, pendingComplaints, reviewRumors, newsCount, funds, recentActivity] = await Promise.all([
+  const [users, constTotal, constAssigned, openProposals, pendingComplaints, reviewRumors, newsCount, funds, recentActivity, donationLeaderboard] = await Promise.all([
     prisma.user.count(),
     prisma.constituency.count(),
     prisma.constituency.count({ where:{mpId:{not:null}} }),
@@ -19,10 +19,13 @@ export default async function AdminDashboard() {
     prisma.news.count(),
     prisma.fund.groupBy({ by:['type'], _sum:{amount:true} }),
     prisma.activityLog.findMany({ take:8, orderBy:{createdAt:'desc'}, include:{user:{select:{name:true,role:true}}} }),
+    prisma.donation.groupBy({ by:['partyName'], where:{status:'SUCCESS'}, _sum:{amount:true}, _count:{id:true}, orderBy:{_sum:{amount:'desc'}} }),
   ]);
 
   const totalIn = funds.find(f=>f.type==='DONATION')?._sum.amount ?? 0;
   const totalOut = funds.find(f=>f.type==='EXPENSE')?._sum.amount ?? 0;
+  const maxDonation = donationLeaderboard.length > 0 ? (donationLeaderboard[0]._sum.amount ?? 0) : 0;
+
 
   return (
     <DashboardLayout title="Admin Dashboard" user={{name:user.name,role:user.role,email:user.email}}>
@@ -62,7 +65,7 @@ export default async function AdminDashboard() {
         <div className="card">
           <h2 style={{fontSize:'1rem',fontWeight:600,marginBottom:'1rem'}}>📋 Recent Activity</h2>
           <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
-            {recentActivity.length===0?<p className="text-muted">No recent activity</p>:recentActivity.map(log=>(
+            {recentActivity.length===0?<p className="text-muted">No recent activity</p>:recentActivity.map((log: {id:string;action:string;entity:string;createdAt:Date;user:{name:string;role:string}})=>(
               <div key={log.id} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.5rem 0',borderBottom:'1px solid var(--border)'}}>
                 <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(245,158,11,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.8rem',flexShrink:0}}>
                   {log.action==='LOGIN'?'🔐':log.action==='VOTE'?'🗳️':'📝'}
@@ -76,7 +79,34 @@ export default async function AdminDashboard() {
             ))}
           </div>
         </div>
+        <div className="card" style={{gridColumn:'1/-1'}}>
+          <h2 style={{fontSize:'1rem',fontWeight:600,marginBottom:'1rem'}}>🏆 Party Donation Leaderboard (bKash)</h2>
+          {donationLeaderboard.length === 0 ? (
+            <p style={{color:'var(--text-muted)',fontSize:'0.85rem'}}>No bKash donations yet.</p>
+          ) : (
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:'0.75rem'}}>
+              {donationLeaderboard.map((entry: {partyName:string;_sum:{amount:number|null};_count:{id:number}}, i: number)=>{
+                const total = entry._sum.amount ?? 0;
+                const pct = maxDonation > 0 ? (total / maxDonation) * 100 : 0;
+                const medals = ['🥇','🥈','🥉'];
+                return (
+                  <div key={entry.partyName} style={{background:'rgba(255,255,255,0.04)',border:'1px solid var(--border)',borderRadius:12,padding:'1rem'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.5rem'}}>
+                      <span style={{fontWeight:600,fontSize:'0.85rem'}}>{medals[i]??`${i+1}.`} {entry.partyName}</span>
+                      <span style={{color:'var(--gold)',fontWeight:700,fontSize:'0.9rem'}}>৳{total.toLocaleString()}</span>
+                    </div>
+                    <div style={{background:'rgba(255,255,255,0.06)',borderRadius:8,height:6,overflow:'hidden',marginBottom:'0.35rem'}}>
+                      <div style={{width:`${pct}%`,height:'100%',background:'linear-gradient(90deg,#E2136E,#ff6b9d)',borderRadius:8}}/>
+                    </div>
+                    <div style={{fontSize:'0.7rem',color:'var(--text-muted)'}}>{entry._count.id} donation{entry._count.id!==1?'s':''}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );
 }
+

@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 interface NavItem { href: string; label: string; icon: string; }
 interface NavSection { section: string; items: NavItem[]; }
@@ -23,6 +24,9 @@ const navByRole: Record<string, NavSection[]> = {
       { href:'/dashboard/community', label:'Community Feed', icon:'🌐' },
       { href:'/dashboard/users', label:'User Management', icon:'👥' },
     ]},
+    { section: 'People', items: [
+      { href:'/dashboard/search', label:'Search Users', icon:'🔍' },
+    ]},
   ],
   PARTY_ADMIN: [
     { section: 'Overview', items: [{ href:'/dashboard/party-admin', label:'Party Dashboard', icon:'📊' }] },
@@ -30,6 +34,9 @@ const navByRole: Record<string, NavSection[]> = {
       { href:'/dashboard/events', label:'Events', icon:'🎪' },
       { href:'/dashboard/news', label:'Official Newsfeed', icon:'📰' },
       { href:'/dashboard/community', label:'Community Feed', icon:'🌐' },
+    ]},
+    { section: 'People', items: [
+      { href:'/dashboard/search', label:'Search Users', icon:'🔍' },
     ]},
   ],
   CHAIRMAN: [
@@ -42,6 +49,9 @@ const navByRole: Record<string, NavSection[]> = {
       { href:'/dashboard/news', label:'Official Newsfeed', icon:'📰' },
       { href:'/dashboard/community', label:'Community Feed', icon:'🌐' },
     ]},
+    { section: 'People', items: [
+      { href:'/dashboard/search', label:'Search Users', icon:'🔍' },
+    ]},
   ],
   MINISTER: [
     { section: 'Overview', items: [{ href:'/dashboard/minister', label:'Dashboard', icon:'🏛️' }] },
@@ -50,6 +60,9 @@ const navByRole: Record<string, NavSection[]> = {
       { href:'/dashboard/events', label:'Events', icon:'🎪' },
       { href:'/dashboard/news', label:'Official Newsfeed', icon:'📰' },
       { href:'/dashboard/community', label:'Community Feed', icon:'🌐' },
+    ]},
+    { section: 'People', items: [
+      { href:'/dashboard/search', label:'Search Users', icon:'🔍' },
     ]},
   ],
   MP: [
@@ -61,6 +74,9 @@ const navByRole: Record<string, NavSection[]> = {
       { href:'/dashboard/news', label:'Official Newsfeed', icon:'📰' },
       { href:'/dashboard/community', label:'Community Feed', icon:'🌐' },
     ]},
+    { section: 'People', items: [
+      { href:'/dashboard/search', label:'Search Users', icon:'🔍' },
+    ]},
   ],
   PUBLIC: [
     { section: 'Public', items: [
@@ -68,21 +84,34 @@ const navByRole: Record<string, NavSection[]> = {
       { href:'/dashboard/community', label:'Community Feed', icon:'🗣️' },
       { href:'/dashboard/news', label:'Official Newsfeed', icon:'📰' },
       { href:'/dashboard/events', label:'Events', icon:'🎪' },
+      { href:'/dashboard/donate', label:'Donate to Party', icon:'💚' },
       { href:'/dashboard/complaints', label:'Submit Complaint', icon:'📢' },
-      { href:'/dashboard/rumors', label:'Report Rumor', icon:'🔍' },
+      { href:'/dashboard/rumors', label:'Report Rumor', icon:'❓' },
+    ]},
+    { section: 'People', items: [
+      { href:'/dashboard/search', label:'Search Users', icon:'🔍' },
     ]},
   ],
 };
 
 export default function Sidebar({ user }: { user: { name: string; role: string; email: string } }) {
   const pathname = usePathname();
+  const [userId, setUserId] = useState<string | null>(null);
   const nav = navByRole[user.role] ?? navByRole.PUBLIC;
   const initials = user.name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.data?.id) setUserId(d.data.id);
+    });
+  }, []);
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method:'POST' });
     window.location.href = '/login';
   }
+
+  const profileHref = userId ? `/dashboard/profile/${userId}` : '#';
 
   return (
     <aside className="sidebar">
@@ -94,6 +123,14 @@ export default function Sidebar({ user }: { user: { name: string; role: string; 
         </div>
       </div>
       <nav className="sidebar-nav">
+        {/* My Profile — always first */}
+        <div className="nav-section">
+          <div className="nav-section-label">My Account</div>
+          <Link href={profileHref} className={`nav-link${pathname.startsWith('/dashboard/profile') ? ' active' : ''}`}>
+            <span>👤</span><span>My Profile</span>
+          </Link>
+        </div>
+
         {nav.map(section => (
           <div key={section.section} className="nav-section">
             <div className="nav-section-label">{section.section}</div>
